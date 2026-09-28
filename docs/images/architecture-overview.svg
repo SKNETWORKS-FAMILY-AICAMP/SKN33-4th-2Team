@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="820" viewBox="0 0 1440 820" role="img" aria-labelledby="title desc">
+  <title id="title">Paper Scholar 서비스 아키텍처</title>
+  <desc id="desc">React 웹 UI, Django REST API와 작업 큐, LangGraph AI 처리 엔진, 외부 모델 및 저장소의 연결 구조</desc>
+  <defs>
+    <style>
+      .bg{fill:#f8fafc}.lane{fill:#fff;stroke:#d7e1ef;stroke-width:2}.box{fill:#fff;stroke:#7aa2e3;stroke-width:2}.web{fill:#eaf1ff;stroke:#4f82d9}.agent{fill:#edf9f3;stroke:#39a271}.store{fill:#fff7e8;stroke:#db9a36}.external{fill:#f4efff;stroke:#8c6cd1}.heading{font:700 24px Arial,sans-serif;fill:#1d2c45}.label{font:700 18px Arial,sans-serif;fill:#1d2c45}.copy{font:15px Arial,sans-serif;fill:#46566f}.small{font:13px Arial,sans-serif;fill:#52657e}.arrow{stroke:#55708f;stroke-width:2.6;fill:none;marker-end:url(#a)}.muted{stroke:#91a5bf;stroke-dasharray:7 6}.cap{font:700 15px Arial,sans-serif;letter-spacing:1.6px;fill:#617895}
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#55708f"/></marker>
+  </defs>
+  <rect class="bg" width="1440" height="820" rx="24"/>
+  <text x="56" y="58" class="heading">Paper Scholar · Django/React + LangGraph 서비스 구조</text>
+  <text x="56" y="86" class="copy">웹 요청은 Django API와 DB 기반 작업 큐를 거쳐, 기존 Python AI 엔진과 외부 모델·저장소로 연결됩니다.</text>
+
+  <rect class="lane" x="44" y="118" width="1352" height="142" rx="18"/>
+  <text x="70" y="151" class="cap">PRESENTATION</text>
+  <rect class="box web" x="168" y="160" width="275" height="72" rx="12"/>
+  <text x="190" y="190" class="label">React + Vite 웹 UI</text><text x="190" y="214" class="small">로그인 · 서재 · 검색 · 상세 · Deep Search</text>
+  <rect class="box web" x="637" y="160" width="278" height="72" rx="12"/>
+  <text x="658" y="190" class="label">JWT 사용자 세션</text><text x="658" y="214" class="small">사용자별 LibraryEntry · 대화 문맥</text>
+  <path class="arrow" d="M443 196H617"/><path class="arrow muted" d="M915 196H1065"/>
+  <text x="1084" y="190" class="label">Nginx · Docker · AWS</text><text x="1084" y="214" class="small">정적 파일과 Django API 배포</text>
+
+  <rect class="lane" x="44" y="284" width="1352" height="194" rx="18"/>
+  <text x="70" y="317" class="cap">APPLICATION</text>
+  <rect class="box web" x="168" y="333" width="275" height="102" rx="12"/>
+  <text x="190" y="364" class="label">Django REST API</text><text x="190" y="389" class="small">/api/search · papers · ask</text><text x="190" y="412" class="small">/api/supervisor/runs</text>
+  <rect class="box store" x="585" y="333" width="282" height="102" rx="12"/>
+  <text x="607" y="364" class="label">MySQL + 작업 큐</text><text x="607" y="389" class="small">Paper · Section · Summary · Translation</text><text x="607" y="412" class="small">ProcessingJob · SupervisorRun</text>
+  <rect class="box agent" x="1005" y="333" width="280" height="102" rx="12"/>
+  <text x="1027" y="364" class="label">run_jobs 워커</text><text x="1027" y="389" class="small">대기 작업을 안전하게 1건씩 실행</text><text x="1027" y="412" class="small">진행률 · 오류 · heartbeat 기록</text>
+  <path class="arrow" d="M443 384H565"/><path class="arrow" d="M867 384H985"/>
+
+  <rect class="lane" x="44" y="502" width="1352" height="260" rx="18"/>
+  <text x="70" y="535" class="cap">AI EXECUTION &amp; DATA</text>
+  <rect class="box agent" x="123" y="560" width="296" height="145" rx="12"/>
+  <text x="145" y="592" class="label">LangGraph Supervisor</text><text x="145" y="617" class="small">상태(State) · 조건 분기 · 사용자 확인</text><text x="145" y="641" class="small">검색 → 저장 → 추출 → 요약 → 번역</text><text x="145" y="665" class="small">Deep Search → Deep Research</text>
+  <rect class="box agent" x="532" y="560" width="297" height="145" rx="12"/>
+  <text x="554" y="592" class="label">공용 AI 도구 / 서비스</text><text x="554" y="617" class="small">arXiv · PDF 추출 · 요약 · 번역</text><text x="554" y="641" class="small">ChromaDB 검색 · 근거 문서 반환</text><text x="554" y="665" class="small">LangChain RAG 체인</text>
+  <rect class="box external" x="948" y="560" width="340" height="145" rx="12"/>
+  <text x="970" y="592" class="label">외부 모델 및 데이터 저장소</text><text x="970" y="617" class="small">OpenAI · NVIDIA Build · Gemini · Ollama</text><text x="970" y="641" class="small">Hugging Face BAAI/bge-m3 · ChromaDB</text><text x="970" y="665" class="small">arXiv API · PDF 원문</text>
+  <path class="arrow" d="M1145 435V540H271V560"/><path class="arrow" d="M419 632H512"/><path class="arrow" d="M829 632H928"/>
+  <path class="arrow muted" d="M1005 410C950 475 760 500 680 560"/>
+  <text x="765" y="488" class="small">일반 요약·번역 작업</text>
+</svg>
