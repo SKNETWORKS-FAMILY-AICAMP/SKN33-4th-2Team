@@ -1,6 +1,6 @@
 # Paper Scholar — Academic Paper RAG Chatbot (4th Team Project)
 
-arXiv와 PDF 학술 논문을 수집·파싱·인덱싱하여 논문 검색, 번역, 요약 및 근거 기반 심층 질의응답을 제공하는 RAG(Retrieval-Augmented Generation) 챗봇 서비스입니다. 3차 프로젝트의 CLI·Streamlit·로컬 LangGraph 엔진을 그대로 재사용하면서, React 웹 프론트엔드와 Django REST API·MySQL 기반의 로그인 다중 사용자 웹 서비스로 확장했습니다.
+arXiv와 PDF 학술 논문을 수집·파싱·인덱싱하여 논문 검색, 요약·번역 및 근거 기반 심층 질의응답을 제공하는 RAG(Retrieval-Augmented Generation) 웹 서비스입니다. 3차 프로젝트에서 만든 Python·LangGraph AI 엔진을 React 웹 프론트엔드, Django REST API, MySQL 기반의 다중 사용자 서비스로 통합했습니다.
 
 현재 Django/React 웹의 검색·Supervisor 실행 및 배포 절차는
 [검색·Supervisor 수정 안내](docs/SEARCH_SUPERVISOR_FIX.md)를 참고하세요.
@@ -157,17 +157,27 @@ Paper_Scholar/
 
 ## 시스템 아키텍처
 
-Supervisor(자연어 실행 계획)가 요청을 분석해 필요한 작업만 계획하고, 실제 처리는 Django REST API가 `src/tools`의 기존 LangGraph 엔진을 그대로 호출해 수행하는 구조입니다.
+4차 제출 시스템 구성도를 현재 구현에 맞춰 갱신했습니다. 웹 요청은 React 화면에서 Django REST API로 들어오고, 시간이 걸리는 추출·요약·번역·Supervisor 작업은 DB에 먼저 기록한 뒤 `run_jobs` 워커가 실행합니다. 워커는 `src/`의 LangGraph·LangChain 기반 AI 엔진과 각 도구를 호출합니다.
 
-![Paper Scholar 처리 흐름](data/figures/img_2.png)
+![Paper Scholar 서비스 아키텍처](docs/images/architecture-overview.svg)
 
-### 핵심 분기 규칙
+```text
+사용자
+  → React 웹 UI (검색 · 내 서재 · 논문 상세 · Deep Search)
+  → Django REST API + JWT 인증
+  → MySQL (논문 · 사용자 서재 · 처리 작업 · Supervisor 실행 이력)
+  → run_jobs 워커
+  → LangGraph Supervisor / RAG 도구
+  → arXiv · PDF 추출 · ChromaDB · OpenAI/NVIDIA/Gemini/Ollama
+```
 
-- **신규 자료 검색:** `키워드 생성` → `arXiv 검색` → `다운로드` → `본문 추출` → `요약` → `요약문 번역` 순으로 필요한 단계만 실행됩니다.
-- **검색 결과 없음:** `arXiv 검색` 결과가 비어 있으면 이전과 다른 키워드로 최대 1회 재생성·재시도 후, 그래도 없으면 종료합니다.
-- **선행 산출물 자동 보강:** 요약 요청인데 추출된 본문이 없으면 `본문 추출`을, 번역 요청인데 요약이 없으면 `본문 추출 → 요약`을 계획에 자동으로 먼저 끼워 넣습니다.
-- **근거 기반 질의응답(Deep Search → Deep Research):** 사용자가 논문 한 편을 선택하면 Deep Search가 그 논문의 본문 청크(ChromaDB)에서 근거를 검색하고, Deep Research가 그 근거만으로 답변합니다. 근거가 없으면 답변 대신 해당 논문의 참고문헌을 안내합니다.
-- **모델 폴백:** 요약·번역은 NVIDIA Build API를 우선 사용하고, 과부하(429/5xx) 응답을 받으면 로컬 Ollama(`qwen2.5:3b`)로 자동 전환합니다.
+### 핵심 처리 흐름
+
+- **논문 탐색·저장:** 키워드 정규화 → arXiv 검색 → 사용자 서재 저장 → 필요 시 PDF 다운로드·본문 추출을 진행합니다.
+- **비동기 처리:** 추출·요약·번역·Supervisor 실행은 `ProcessingJob` 또는 `SupervisorRun`으로 DB에 기록합니다. 웹 서버와 분리된 `python manage.py run_jobs`가 대기 작업을 가져가 상태·진행률·오류를 갱신합니다.
+- **Supervisor 실행:** `/api/supervisor/runs/`는 자연어 요청을 접수해 웹 LangGraph를 비동기로 실행합니다. 사용자별 `thread_id`와 `context`에 검색 후보·선택 논문을 보존해 이어지는 요청을 처리합니다. 이전 `/api/supervisor/plan/`은 호환용 계획 API입니다.
+- **근거 기반 질의응답:** 선택 논문의 본문 청크를 Deep Search(ChromaDB)가 검색하고, Deep Research/RAG 체인이 검색 근거를 중심으로 답변과 출처를 반환합니다.
+- **모델 폴백:** 요약·번역은 NVIDIA Build API를 우선 사용하며, 설정한 대체 provider 또는 로컬 Ollama(`qwen2.5:3b`)로 전환할 수 있습니다.
 
 ## 데이터 구조와 ERD
 
@@ -192,25 +202,27 @@ API는 화면(React) 담당자와 AI 기능 담당자가 독립적으로 작업�
 | 상태 확인 & 인증 | `health`, `auth/register`, `auth/token`, `auth/token/refresh`, `auth/me` |
 | 논문 검색 & 서재 | `search`, `papers`, `papers/save`, `jobs/<id>` |
 | 본문 · 요약 · 번역 | `papers/<id>/sections`, `papers/<id>/extract`, `papers/<id>/summary`, `papers/<id>/summarize`, `papers/<id>/translations`, `papers/<id>/translate` |
-| 논문 Q&A & Supervisor | `papers/<id>/ask`, `supervisor/plan` |
+| 논문 Q&A & Supervisor | `papers/<id>/ask`, `supervisor/runs`, `supervisor/runs/<id>`, `supervisor/plan` |
 
-## Supervisor (자연어 실행 계획)
+## Supervisor (자연어 작업 실행)
 
-웹 버전의 Supervisor(`backend/scholar/supervisor_service.py`)는 자연어 요청을 검증된 실행 계획(`SupervisorPlan`: search/save/extract/summarize/translate 액션 목록)으로 변환하는 경량 플래너입니다. 계획 자체는 논문 작업을 수행하지 않고, React 프론트엔드가 이 계획을 순서대로 각 API에 호출해 실행합니다.
+현재 웹 화면의 Deep Search는 `POST /api/supervisor/runs/`로 요청을 접수합니다. Django는 `SupervisorRun`을 DB 큐에 저장하고, `run_jobs` 워커가 웹용 LangGraph(`backend/scholar/web_graph.py`)를 실행합니다. 실행 결과·선택 논문·근거·노드 이력은 같은 실행 레코드에 남아 화면에서 조회할 수 있습니다.
 
-> 참고: `src/orchestration/graph.py`에는 3차 프로젝트에서 만든 9개 노드짜리 전체 LangGraph StateGraph(순환 그래프)도 그대로 남아 있어, 필요 시 CLI 등에서 독립적으로 재사용할 수 있습니다.
+`/api/supervisor/plan/`은 자연어 요청을 `search/save/extract/summarize/translate` 계획으로만 변환하는 하위 호환 API입니다. 실제 웹 실행은 `runs` API와 DB 워커 경로를 사용합니다. 공용 상태·라우팅·도구 어댑터는 `src/orchestration/`에 있어 CLI/테스트에서도 재사용할 수 있습니다.
 
-## 스크린샷
+## 화면 구성
 
-> 아래 이미지는 3차 프로젝트 당시 캡처로, 현재 React 웹 화면과 다를 수 있습니다. 최신 화면 캡처로 교체가 필요합니다.
+4차 웹 UI는 제출 화면 설계서의 3열 작업 공간을 구현합니다. 로컬 Django 데모 데이터로 로그인, 서재, 논문 상세, Deep Search 화면을 다시 확인했습니다.
 
-![저장된 논문 목록과 초록 한국어 번역 화면](data/figures/img_3.png)
+| 화면 | 제공 기능 |
+| --- | --- |
+| 로그인/회원가입 | JWT 기반 인증 후 개인 논문 서재 진입 |
+| 내 논문 서재 | 저장한 논문별 본문 섹션·요약·번역 처리 상태 확인 |
+| 논문 검색 | arXiv 검색 결과 선택, 사용자 서재 저장 및 추출 작업 요청 |
+| 논문 상세 | 초록, 본문 섹션, 구조화 요약, 한국어 번역, 근거 기반 Q&A 탭 |
+| Deep Search | 자연어 요청 접수, Supervisor 실행 상태와 결과 확인 |
 
-![arXiv 논문 검색과 요약 화면](data/figures/img_5.png)
-
-![선택 논문 Deep Research 화면](data/figures/img_6.png)
-
-![논문 번역과 구조화 요약 결과 화면](data/figures/img_4.png)
+> README 이미지는 기존 3차 Streamlit 캡처를 제거했습니다. 최신 화면은 현재 React 앱을 로컬에서 실행한 뒤 캡처하여 제출·발표 자료에 사용합니다. 화면을 다시 만들려면 아래 실행 방법으로 웹·워커를 실행하세요.
 
 ## 실행 방법
 
@@ -262,6 +274,15 @@ DB 마이그레이션 후 서버를 실행합니다 (루트 `manage.py`가 `back
 python manage.py migrate
 python manage.py runserver 0.0.0.0:8000
 ```
+
+추출·요약·번역·Deep Search 요청은 DB 작업 큐에 저장됩니다. **별도 터미널**에서 아래 워커도 실행해야 대기 작업이 실제로 처리됩니다.
+
+```bash
+source .venv/bin/activate
+python manage.py run_jobs
+```
+
+워커를 실행하지 않으면 요청이 `pending` 상태로 남습니다. 로컬 개발에서 프런트엔드는 기본적으로 `http://127.0.0.1:8000/api`를 사용합니다.
 
 ### 3. 프론트엔드(React) 실행
 
